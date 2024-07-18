@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Example</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.5.1/dist/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css" integrity="sha512-jnSuA4Ss2PkkikSOLtYs8BlYIeeIK1h99ty4YfvRPAlzr377vr3CXDb7sb7eEEBYjDtcYj+AjBH3FLv5uSJuXg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <style>
+        #username-page {
+            background-color: #f8f9fa;
+        }
+
+        .username-page-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        #card {
+            max-width: 600px;
+            width: 100%;
+        }
+
+        .form-control {
+            border-radius: 0.25rem;
+            padding: 0.75rem 1rem;
+        }
+
+        .btn-primary {
+            background-color: #007bff;
+            border-color: #007bff;
+            border-radius: 0.25rem;
+            padding: 0.75rem 1rem;
+        }
+
+        .btn-primary:hover {
+            background-color: #0056b3;
+            border-color: #004e9f;
+        }
+        #chat-page {
+            background-color: #f8f9fa;
+            height: 100vh;
+            display: none;
+        }
+
+        .chat-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .chat-header {
+            border-top-left-radius: 0.25rem;
+            border-top-right-radius: 0.25rem;
+        }
+
+        .chat-messages {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .chat-messages li {
+            padding: 0.5rem 1rem;
+        }
+
+        .chat-messages li:nth-child(odd) {
+            background-color: #f1f1f1;
+        }
+
+        .form-control {
+            border-radius: 0.25rem 0 0 0.25rem;
+        }
+
+        .btn-primary {
+            border-radius: 0 0.25rem 0.25rem 0;
+        }
+    </style>
+
+
+</head>
+<body>
+<h1 class="text-center">Hello SocKet</h1>
+<div id="username-page">
+    <div class="username-page-container d-flex justify-content-center align-items-center vh-100">
+        <div class="card shadow-lg p-5 rounded" id="card">
+            <h1 class="card-title text-center mb-4">Điền tên của bạn để vào phòng chat</h1>
+                <div class="form-group">
+                    <input type="text" required id="name" placeholder="Username" autocomplete="off" class="form-control" />
+                </div>
+                <div class="form-group d-grid">
+                    <button onclick="login()" type="submit" class="btn btn-primary username-submit">Bắt đầu chat</button>
+                    <span class="text-center" style="color: red;" id="error"></span>
+                </div>
+        </div>
+    </div>
+</div>
+
+    <div id="chat-page" class="" style="border: 1px solid">
+        <div class="chat-container card d-flex flex-column h-100">
+            <div class="chat-header bg-primary text-white p-3">
+                <h2 class="mb-0">Welcome</h2>
+            </div>
+            <div class="connecting text-center">
+                Connecting...
+            </div>
+            <ul id="messageArea" class="list-group chat-messages flex-grow-1 overflow-auto"></ul>
+            <div id="messageForm" name="messageForm" class="bg-light p-3">
+                <div class="input-group">
+                    <input type="text" required id="message" placeholder="Type a message..." autocomplete="off" class="form-control" />
+                    <button onclick="chat()" class="btn btn-primary">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+<!--<input type="text" id="sender-input" placeholder="Enter a sender">-->
+<!--<input type="text" id="message-input" placeholder="Enter a message">-->
+<!--<button onclick="sendMessage()" type="submit">Send Message</button>-->
+<div id="message-container"></div>
+
+<script>
+    var connectingElement = document.querySelector('.connecting');
+    var noiDungChat = document.querySelector('#message');
+    var chatPage = document.getElementById('chat-page');
+    var stompClient = null;
+    var colors = [
+        '#2196F3', '#32c787', '#00BCD4', '#ff5652',
+        '#ffc107', '#ff85af', '#FF9800', '#39bbb0'
+    ];
+
+    function connectToWebSocket() {
+        var socket = new SockJS('/websocket');
+        stompClient = Stomp.over(socket);
+        stompClient.connect({}, function (frame) {
+            console.log('Connected: ' + frame);
+            stompClient.subscribe('/topic/public', function (message) {
+                showMessage(JSON.parse(message.body));
+            });
+        });
+    }
+
+    function login() {
+
+        if(document.getElementById("name").value.trim() !== ""){
+            getUser();
+            document.querySelector("#username-page").style = "display : none;";
+            var messageInput = document.getElementById('name');
+            var username = messageInput.value;
+            stompClient.send("/app/login", {}, JSON.stringify({ 'sender': username ,'type': 'JOIN'}));
+            messageInput.value = '';
+            connectingElement.innerHTML=``;
+            chatPage.style.display="block";
+
+        }else {
+            document.getElementById("error").innerText = "Vui lòng điền tên của bạn !";
+
+        }
+
+    }
+
+    function showMessage(message) {
+        stompClient.subscribe('/topic/public', onMessageReceived(message));
+    }
+    function getUser(){
+        var user = document.getElementById("name");
+        console.log(user.value)
+        sessionStorage.setItem("username",user.value);
+    }
+    function chat(){
+        username = sessionStorage.getItem("username");
+        var messageContent = noiDungChat.value.trim();
+        if(messageContent && stompClient) {
+            var chatMessage = {
+                sender: username,
+                content: messageContent,
+                type: 'CHAT'
+            };
+            stompClient.send("/app/chat", {}, JSON.stringify(chatMessage));
+            noiDungChat.value = '';
+        }
+    }
+    function onMessageReceived(message) {
+
+        var messageElement = document.createElement('li');
+            messageElement.classList.add("text-center");
+            messageElement.style.color="red";
+        messageElement.style="background-color : white;";
+        if(message.type === 'JOIN') {
+            messageElement.classList.add('event-message');
+            message.content = message.sender + ' joined!';
+        } else if (message.type === 'LEAVE') {
+            messageElement.classList.add('event-message');
+            message.content = message.sender + ' left!';
+        } else {
+            messageElement.classList.add('chat-message');
+            messageElement.classList.add("d-flex");
+            var avatarElement = document.createElement('div');
+            avatarElement.style.width = '40px';
+            avatarElement.style.height = '40px';
+            avatarElement.style.borderRadius = '50%';
+            avatarElement.style.color = '#fff'; // Example text color
+            avatarElement.style.display = 'flex';
+            avatarElement.style.justifyContent = 'center';
+            avatarElement.style.alignItems = 'center';
+            avatarElement.style.marginRight = '10px';
+            var avatarText = document.createTextNode(message.sender[0]);
+            avatarElement.appendChild(avatarText);
+            avatarElement.style['background-color'] = getAvatarColor(message.sender);
+            messageElement.classList.remove("text-center");
+            messageElement.appendChild(avatarElement);
+
+            var usernameElement = document.createElement('span');
+            var usernameText = document.createTextNode(message.sender + " : ");
+            usernameElement.style.marginTop="10px";
+            usernameElement.appendChild(usernameText);
+            messageElement.appendChild(usernameElement);
+        }
+
+        var textElement = document.createElement('p');
+        textElement.style.marginLeft="10px";
+        textElement.style.marginTop="10px";
+        var messageText = document.createTextNode(message.content);
+        textElement.appendChild(messageText);
+
+        messageElement.appendChild(textElement);
+
+        messageArea.appendChild(messageElement);
+        messageArea.scrollTop = messageArea.scrollHeight;
+    }
+    function getAvatarColor(messageSender) {
+        var hash = 0;
+        for (var i = 0; i < messageSender.length; i++) {
+            hash = 31 * hash + messageSender.charCodeAt(i);
+        }
+        var index = Math.abs(hash % colors.length);
+        return colors[index];
+    }
+    connectToWebSocket();
+</script>
+</body>
+</html>
